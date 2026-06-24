@@ -50,6 +50,76 @@ function isFeedbackResponse(value: unknown): value is FeedbackResponse {
   return true;
 }
 
+function looksLikeHtml(s: string): boolean {
+  return /<[a-z!\/][^>]*>/i.test(s);
+}
+
+const BLOCK_TAGS =
+  "p|div|section|article|header|footer|main|aside|nav|ul|ol|li|h[1-6]|br|tr|td|th|hr|blockquote|pre";
+
+const INLINE_TAGS =
+  "a|span|em|strong|b|i|u|small|sub|sup|mark|code|abbr|cite|q|font|button|label";
+
+const VOID_TAGS = "script|style|noscript|head|title|meta|link|svg|iframe|template";
+
+function stripHtml(input: string): string {
+  let s = input;
+
+  s = s.replace(new RegExp(`<(${VOID_TAGS})\\b[\\s\\S]*?<\\/\\1>`, "gi"), " ");
+  s = s.replace(/<!--[\s\S]*?-->/g, " ");
+
+  s = s.replace(
+    new RegExp(`<\\/?(?:${BLOCK_TAGS})\\b[^>]*>`, "gi"),
+    "\n",
+  );
+  s = s.replace(/<br\s*\/?>(?!\n)/gi, "\n");
+  s = s.replace(
+    new RegExp(`<\\/?(?:${INLINE_TAGS})\\b[^>]*>`, "gi"),
+    " ",
+  );
+
+  s = s.replace(/<[^>]+>/g, "");
+
+  s = s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&copy;/gi, "©")
+    .replace(/&reg;/gi, "®")
+    .replace(/&trade;/gi, "™")
+    .replace(/&hellip;/gi, "…")
+    .replace(/&mdash;/gi, "—")
+    .replace(/&ndash;/gi, "–")
+    .replace(/&lsquo;/gi, "\u2018")
+    .replace(/&rsquo;/gi, "\u2019")
+    .replace(/&ldquo;/gi, "\u201C")
+    .replace(/&rdquo;/gi, "\u201D")
+    .replace(/&middot;/gi, "·")
+    .replace(/&bull;/gi, "•")
+    .replace(/&euro;/gi, "€")
+    .replace(/&pound;/gi, "£")
+    .replace(/&cent;/gi, "¢")
+    .replace(/&times;/gi, "×")
+    .replace(/&divide;/gi, "÷")
+    .replace(/&#(\d+);/g, (_, d: string) =>
+      String.fromCharCode(Number.parseInt(d, 10)),
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) =>
+      String.fromCharCode(Number.parseInt(h, 16)),
+    );
+
+  const lines = s
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line) => line.length > 0);
+
+  return lines.join("\n").trim();
+}
+
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -87,6 +157,23 @@ export async function POST(request: Request) {
     return Response.json({ error: "Missing model name." }, { status: 400 });
   }
 
+  const rawLength = copy.length;
+  const wasHtml = looksLikeHtml(copy);
+  const cleaned = wasHtml ? stripHtml(copy) : copy.trim();
+  const MAX_CLEANED = 30_000;
+  const truncated = cleaned.length > MAX_CLEANED;
+  const finalCopy = truncated ? cleaned.slice(0, MAX_CLEANED) : cleaned;
+
+  if (finalCopy.length < 20) {
+    return Response.json(
+      {
+        error:
+          "No readable text found. If you pasted HTML, the page may be empty or built entirely from images/scripts.",
+      },
+      { status: 400 },
+    );
+  }
+
   let client: OpenAI;
   try {
     client = new OpenAI({ apiKey, baseURL: baseUrl.replace(/\/+$/, "") });
@@ -104,7 +191,7 @@ export async function POST(request: Request) {
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: copy },
+        { role: "user", content: finalCopy },
       ],
     });
 
@@ -133,7 +220,15 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json(parsed satisfies FeedbackResponse);
+    return Response.json({
+      ...(parsed satisfies FeedbackResponse),
+      _meta: {
+        wasHtml,
+        rawLength,
+        cleanedLength: finalCopy.length,
+        truncated,
+      },
+    });
   } catch (err) {
     const message = (err as Error).message || "Unknown error from API";
     return Response.json({ error: message }, { status: 502 });

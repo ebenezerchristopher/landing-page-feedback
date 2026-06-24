@@ -12,6 +12,12 @@ type FeedbackResponse = {
   clarity: SectionFeedback;
   cta: SectionFeedback;
   positioning: SectionFeedback;
+  _meta?: {
+    wasHtml: boolean;
+    rawLength: number;
+    cleanedLength: number;
+    truncated: boolean;
+  };
 };
 
 type Settings = {
@@ -147,7 +153,7 @@ export default function Home() {
 
   function formatFeedbackAsText(fb: FeedbackResponse): string {
     return SECTIONS.map(({ key, label }) => {
-      const s = fb[key];
+      const s = fb[key] as SectionFeedback;
       return [
         `## ${label} — ${s.score}/10`,
         "",
@@ -262,7 +268,7 @@ export default function Home() {
             id="copy"
             value={copy}
             onChange={(e) => setCopy(e.target.value)}
-            placeholder="Paste your headline, subhead, body, and CTAs here..."
+            placeholder="Paste your landing page copy — plain text or full HTML. If you paste HTML, scripts and tags are stripped automatically."
             rows={14}
             className="w-full resize-y rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm leading-6 text-zinc-900 outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100"
           />
@@ -290,18 +296,29 @@ export default function Home() {
 
         {feedback && (
           <section className="mt-8 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Feedback</h2>
-              <button
-                type="button"
-                onClick={() => copyToClipboard(formatFeedbackAsText(feedback), "all")}
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-              >
-                {copiedKey === "all" ? "Copied!" : "Copy all"}
-              </button>
+              <div className="flex items-center gap-2">
+                {feedback._meta?.wasHtml && (
+                  <span
+                    className="rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-normal text-sky-700 dark:text-sky-400"
+                    title={`Extracted ${feedback._meta.cleanedLength.toLocaleString()} chars of text from ${feedback._meta.rawLength.toLocaleString()} chars of HTML${feedback._meta.truncated ? " (truncated to fit)" : ""}.`}
+                  >
+                    HTML detected
+                    {feedback._meta.truncated ? " • truncated" : ""}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(formatFeedbackAsText(feedback), "all")}
+                  className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  {copiedKey === "all" ? "Copied!" : "Copy all"}
+                </button>
+              </div>
             </div>
             {SECTIONS.map(({ key, label, hint }) => {
-              const s = feedback[key];
+              const s = feedback[key] as SectionFeedback;
               return (
                 <article
                   key={key}
