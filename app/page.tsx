@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type SectionFeedback = {
   score: number;
@@ -18,18 +18,6 @@ type FeedbackResponse = {
     cleanedLength: number;
     truncated: boolean;
   };
-};
-
-type Settings = {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-};
-
-const DEFAULT_SETTINGS: Settings = {
-  baseUrl: "https://api.openai.com/v1",
-  apiKey: "",
-  model: "gpt-4o-mini",
 };
 
 const EXAMPLE_COPY = `Headline: Stop wasting time on spreadsheets.
@@ -68,46 +56,14 @@ function scoreRing(score: number) {
 }
 
 export default function Home() {
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [copy, setCopy] = useState("");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("lpf.settings");
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<Settings>;
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed });
-      }
-    } catch {
-      // ignore corrupt storage
-    }
-  }, []);
-
-  function updateSetting<K extends keyof Settings>(key: K, value: Settings[K]) {
-    setSettings((prev) => {
-      const next = { ...prev, [key]: value };
-      try {
-        localStorage.setItem("lpf.settings", JSON.stringify(next));
-      } catch {
-        // storage may be unavailable; non-fatal
-      }
-      return next;
-    });
-  }
-
   async function getFeedback() {
     if (!copy.trim()) return;
-    if (!settings.apiKey.trim()) {
-      setError("Add your API key in Settings first.");
-      setSettingsOpen(true);
-      return;
-    }
     setError(null);
     setLoading(true);
     setFeedback(null);
@@ -115,12 +71,7 @@ export default function Home() {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          copy,
-          apiKey: settings.apiKey,
-          baseUrl: settings.baseUrl,
-          model: settings.model,
-        }),
+        body: JSON.stringify({ copy }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -167,8 +118,7 @@ export default function Home() {
     }).join("\n");
   }
 
-  const hasKey = settings.apiKey.trim().length > 0;
-  const canSubmit = copy.trim().length > 0 && hasKey && !loading;
+  const canSubmit = copy.trim().length > 0 && !loading;
 
   return (
     <div className="min-h-full bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
@@ -181,75 +131,6 @@ export default function Home() {
             Paste your landing page copy. Get sharp AI feedback on clarity, CTA, and positioning.
           </p>
         </header>
-
-        <section className="mb-6 rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <button
-            type="button"
-            onClick={() => setSettingsOpen((v) => !v)}
-            className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium sm:px-5"
-          >
-            <span className="flex items-center gap-2">
-              <span>Settings</span>
-              {hasKey ? (
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-normal text-emerald-700 dark:text-emerald-400">
-                  key set
-                </span>
-              ) : (
-                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-normal text-amber-700 dark:text-amber-400">
-                  no key
-                </span>
-              )}
-            </span>
-            <span className="text-zinc-400">{settingsOpen ? "−" : "+"}</span>
-          </button>
-          {settingsOpen && (
-            <div className="border-t border-zinc-200 px-4 py-4 sm:px-5 dark:border-zinc-800">
-              <div className="grid gap-3">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                    API base URL
-                  </span>
-                  <input
-                    type="url"
-                    value={settings.baseUrl}
-                    onChange={(e) => updateSetting("baseUrl", e.target.value)}
-                    placeholder="https://api.openai.com/v1"
-                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-mono text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                    API key
-                  </span>
-                  <input
-                    type="password"
-                    value={settings.apiKey}
-                    onChange={(e) => updateSetting("apiKey", e.target.value)}
-                    placeholder="sk-..."
-                    autoComplete="off"
-                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-mono text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                    Model
-                  </span>
-                  <input
-                    type="text"
-                    value={settings.model}
-                    onChange={(e) => updateSetting("model", e.target.value)}
-                    placeholder="gpt-4o-mini"
-                    className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-mono text-zinc-900 outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                  />
-                </label>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Works with any OpenAI-compatible API (OpenAI, OpenRouter, Groq, Together, local Ollama, etc).
-                  Your key is stored only in this browser and sent once per request.
-                </p>
-              </div>
-            </div>
-          )}
-        </section>
 
         <section className="mb-4">
           <div className="mb-2 flex items-center justify-between">
@@ -372,10 +253,6 @@ export default function Home() {
             })}
           </section>
         )}
-
-        <footer className="mt-12 text-center text-xs text-zinc-400">
-          BYOK — your key never leaves the page except for the one request to your provider.
-        </footer>
       </div>
     </div>
   );
