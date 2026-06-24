@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { client, model } from "./config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -128,33 +128,25 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { copy, apiKey, baseUrl, model } = (body ?? {}) as {
-    copy?: unknown;
-    apiKey?: unknown;
-    baseUrl?: unknown;
-    model?: unknown;
-  };
+  const bodyObj = (body ?? {}) as Record<string, unknown> & { copy?: unknown };
+  const { copy } = bodyObj;
+
+  const FORBIDDEN_KEYS = ["apiKey", "baseUrl", "model"] as const;
+  const present = FORBIDDEN_KEYS.filter((k) => k in bodyObj);
+  if (present.length > 0) {
+    return Response.json(
+      {
+        error: `This endpoint no longer accepts ${present.join(", ")}. Configure the server with AI_BASE_URL, AI_API_KEY, and AI_MODEL.`,
+      },
+      { status: 400 },
+    );
+  }
 
   if (typeof copy !== "string" || copy.trim().length < 20) {
     return Response.json(
       { error: "Please paste at least a sentence of landing page copy." },
       { status: 400 },
     );
-  }
-  if (typeof apiKey !== "string" || apiKey.trim().length === 0) {
-    return Response.json(
-      { error: "Missing API key. Add one in the settings panel." },
-      { status: 400 },
-    );
-  }
-  if (typeof baseUrl !== "string" || !/^https?:\/\//.test(baseUrl)) {
-    return Response.json(
-      { error: "Base URL must start with http:// or https://" },
-      { status: 400 },
-    );
-  }
-  if (typeof model !== "string" || model.trim().length === 0) {
-    return Response.json({ error: "Missing model name." }, { status: 400 });
   }
 
   const rawLength = copy.length;
@@ -170,16 +162,6 @@ export async function POST(request: Request) {
         error:
           "No readable text found. If you pasted HTML, the page may be empty or built entirely from images/scripts.",
       },
-      { status: 400 },
-    );
-  }
-
-  let client: OpenAI;
-  try {
-    client = new OpenAI({ apiKey, baseURL: baseUrl.replace(/\/+$/, "") });
-  } catch (err) {
-    return Response.json(
-      { error: `Could not create API client: ${(err as Error).message}` },
       { status: 400 },
     );
   }
